@@ -5,6 +5,16 @@ import google.generativeai as genai
 # 페이지 설정
 st.set_page_config(page_title="복지 챗봇 AI", page_icon="🤖")
 
+# 스타일 숨기기 (메뉴, 헤더, 푸터)
+hide_streamlit_style = """
+<style>
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 # API 키 설정
 try:
     if "GEMINI_API_KEY" in st.secrets:
