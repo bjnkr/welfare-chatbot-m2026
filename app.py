@@ -2,138 +2,131 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import requests
+import threading
+import time
 
-# 페이지 설정
+# --------------------------------------------------------------------------
+# 1. 구글 폼 로그 전송 함수 (비동기 처리)
+# --------------------------------------------------------------------------
+def log_to_google_form(question, answer, status):
+    def send_request():
+        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfKO_6h_Zge_6__lUhAdEFSZ0tsGXe_6BiMNc3_uJqjsYT-Kw/formResponse"
+        data = {
+            "entry.878148217": question,
+            "entry.1467732690": answer,
+            "entry.1569618620": status
+        }
+        try:
+            requests.post(form_url, data=data, timeout=5)
+        except:
+            pass 
+
+    thread = threading.Thread(target=send_request)
+    thread.start()
+
+# --------------------------------------------------------------------------
+# 2. 페이지 설정
+# --------------------------------------------------------------------------
 st.set_page_config(page_title="복지 챗봇 AI", page_icon="🤖")
 
-# 스타일 숨기기 (메뉴, 헤더, 푸터)
-hide_streamlit_style = """
+st.markdown("""
 <style>
 #MainMenu {visibility: hidden;}
 header {visibility: hidden;}
 footer {visibility: hidden;}
 </style>
-"""
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# API 키 설정
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        api_key_configured = True
-    else:
-        st.error("secrets.toml 파일에 'GEMINI_API_KEY'가 설정되지 않았습니다.")
-        api_key_configured = False
-except FileNotFoundError:
-    st.error("'.streamlit/secrets.toml' 파일을 찾을 수 없습니다.")
-    api_key_configured = False
+# --------------------------------------------------------------------------
+# 3. 모델 설정 및 데이터 로드
+# --------------------------------------------------------------------------
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("API 키가 설정되지 않았습니다.")
 
-# 제목
-st.title("🤖 지능형 복지 챗봇")
-st.caption("AI가 구글 시트 데이터를 분석하여 답변해드립니다.")
-
-# 데이터 로드 함수 (캐싱하여 성능 최적화)
 @st.cache_data
 def load_data():
-    # 구글 시트 데이터 URL
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
-    
     try:
         df = pd.read_csv(url)
         return df
-    except Exception as e:
-        st.error(f"데이터를 불러오는 중 오류가 발생했습니다: {e}")
+    except:
         return pd.DataFrame()
 
-# 데이터 불러오기
 df = load_data()
 
-# 채팅 기록 초기화
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 복지 정보에 대해 무엇이든 물어보세요."}]
+# --------------------------------------------------------------------------
+# 4. 메인 UI
+# --------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("복지N 챗봇입니다")
 
-# 채팅 메시지 표시
+st.subheader("✨ 계산기 관련 질문해주세요")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 복지N 입니다 계산기 관련 문의해 주세요."}]
+
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    avatar = "🧚" if msg["role"] == "assistant" else "🧑"
+    with st.chat_message(msg["role"], avatar=avatar):
         st.write(msg["content"])
 
-# 사용자 입력 처리
-if prompt := st.chat_input("질문을 입력하세요 (예: 양육비 언제 받을 수 있어?)"):
-    # 사용자 메시지 표시
+# --------------------------------------------------------------------------
+# 5. 질문 처리 (모델 Fallback 로직 적용)
+# --------------------------------------------------------------------------
+if prompt := st.chat_input("질문을 입력하세요..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🧑"):
         st.write(prompt)
 
-    # 봇 응답 생성
-    if not api_key_configured:
-        st.error("API 키가 설정되지 않아 답변할 수 없습니다.")
-    elif df.empty:
-        st.error("데이터가 로드되지 않았습니다.")
-    else:
-        with st.chat_message("assistant"):
-            with st.spinner("AI가 자료를 분석 중입니다..."):
+    with st.chat_message("assistant", avatar="🧚"):
+        message_placeholder = st.empty()
+        
+        if df.empty:
+            message_placeholder.error("데이터를 불러올 수 없습니다.")
+            st.stop()
+
+        with st.spinner("관련 정보를 열심히 찾고 있어요... 💬"):
+            try:
+                # 1. 전체 데이터 컨텍스트 (Flash 모델은 대용량 처리에 강함)
+                full_data = df.to_csv(index=False)
+                
+                system_prompt = f"""
+                너는 유능한 사회복지 상담사야. 아래 [참고 자료]를 바탕으로 답변해줘.
+
+                [참고 자료]
+                {full_data}
+
+                [규칙]
+                1. 반드시 제공된 자료에 있는 내용으로만 답변해.
+                2. 자료에 없으면 "죄송합니다. 방금하신 질문은 게시판에 문의 바랍니다."라고 답해.
+                3. 핵심만 간결하고 친절하게 답변해.
+
+                [질문]
+                {prompt}
+                """
+                
+                # 2. 모델 시도 (2.0 Exp -> 실패 시 1.5 Flash -> 실패 시 1.5 Pro)
                 try:
-                    # 1. 데이터프레임을 문자열로 변환 (전체 컨텍스트)
-                    # to_csv로 변환하여 AI가 구조를 이해하기 쉽게 함
-                    context_data = df.to_csv(index=False)
-                    
-                    # 2. 프롬프트 구성
-                    system_prompt = f"""
-                    [시스템 지시사항]
-                    너는 친절하고 정확한 복지 상담사야. 아래 [참고 자료]를 꼼꼼히 읽고 사용자의 질문에 답변해줘.
-                    
-                    규칙:
-                    1. 반드시 [참고 자료]에 있는 내용에 기반해서만 대답해야 해.
-                    2. 자료에 없는 내용은 절대 지어내지 말고, "죄송합니다. 제공된 자료에는 해당 내용이 없습니다."라고 정중하게 말해.
-                    3. 답변은 이해하기 쉽게 요약해서 설명해주고, 필요하다면 구체적인 조건이나 금액도 언급해줘.
-                    
-                    [참고 자료]
-                    {context_data}
-                    
-                    [사용자 질문]
-                    {prompt}
-                    """
-                    
-                    
-                    # 3. Gemini 모델 호출 (안정적인 별칭 사용)
-                    model = genai.GenerativeModel("gemini-flash-latest")
+                    # 1순위: 가장 빠르고 똑똑한 2.0 Flash Exp
+                    model = genai.GenerativeModel("gemini-2.0-flash-exp")
                     response = model.generate_content(system_prompt)
-
-# 구글 폼 로그 전송 함수
-def log_to_google_form(question, answer, is_answered):
-    # 구글 폼 URL
-    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfKO_6h_Zge_6__lUhAdEFSZ0tsGXe_6BiMNc3_uJqjsYT-Kw/formResponse"
-    
-    # 폼 데이터
-    data = {
-        "entry.878148217": question,   # 질문
-        "entry.1467732690": answer,    # 답변
-        "entry.1569618620": "성공" if is_answered else "실패" # 상태
-    }
-    
-    try:
-        # 1초의 타임아웃을 두어 사용자 경험을 해치지 않게 함 (선택 사항)
-        requests.post(form_url, data=data, timeout=3)
-    except Exception:
-        # 로그 전송 실패가 사용자에게 에러로 보이지 않게 조용히 넘어감
-        pass
-
-# ... (기존 코드 중 답변 생성 부분) ...
-                    # 4. 결과 출력
                     answer = response.text
-                    st.write(answer)
-                    
-                    # 로그 전송 (답변 생성 직후 실행)
-                    # 답변에 부정적인 키워드가 있으면 '실패'로 간주
-                    failure_keywords = ["죄송합니다", "제공된 자료에는 해당 내용이 없습니다", "정보가 없습니다"]
-                    is_success = not any(keyword in answer for keyword in failure_keywords)
-                    
-                    # 백그라운드에서 실행하면 좋지만, 간단하게 동기 실행
-                    log_to_google_form(prompt, answer, is_success)
-
-                    # 세션에 저장
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-
-                    
                 except Exception as e:
-                    st.error(f"AI 응답 생성 중 오류가 발생했습니다: {e}")
+                    # 2순위: 안정적인 1.5 Flash
+                    # st.toast(f"2.0 모델 사용 불가, 1.5로 전환합니다. ({e})") # 디버깅용
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    response = model.generate_content(system_prompt)
+                    answer = response.text
+                
+                message_placeholder.write(answer)
+
+                # 답변 저장 & 로그
+                st.session_state.messages.append({"role": "assistant", "content": answer})
+                status = "실패" if "죄송합니다" in answer else "성공"
+                log_to_google_form(prompt, answer, status)
+
+            except Exception as e:
+                message_placeholder.error(f"오류가 발생했습니다: {e}")
+                log_to_google_form(prompt, f"System Error: {e}", "에러")
