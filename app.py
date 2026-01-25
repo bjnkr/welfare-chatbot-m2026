@@ -5,16 +5,17 @@ import google.generativeai as genai
 # 페이지 설정
 st.set_page_config(page_title="복지 챗봇 AI", page_icon="🤖")
 
-# 사이드바: API 키 입력
-with st.sidebar:
-    st.header("설정")
-    api_key = st.text_input("Gemini API Key", type="password", help="Google AI Studio에서 발급받은 키를 입력하세요.")
-    if api_key:
-        genai.configure(api_key=api_key)
-        st.success("API 키가 설정되었습니다!")
+# API 키 설정
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        api_key_configured = True
     else:
-        st.warning("API 키를 입력해야 챗봇이 작동합니다.")
-        st.markdown("[API 키 발급받기](https://aistudio.google.com/app/apikey)")
+        st.error("secrets.toml 파일에 'GEMINI_API_KEY'가 설정되지 않았습니다.")
+        api_key_configured = False
+except FileNotFoundError:
+    st.error("'.streamlit/secrets.toml' 파일을 찾을 수 없습니다.")
+    api_key_configured = False
 
 # 제목
 st.title("🤖 지능형 복지 챗봇")
@@ -53,8 +54,8 @@ if prompt := st.chat_input("질문을 입력하세요 (예: 양육비 언제 받
         st.write(prompt)
 
     # 봇 응답 생성
-    if not api_key:
-        st.error("왼쪽 사이드바에 Gemini API 키를 먼저 입력해주세요.")
+    if not api_key_configured:
+        st.error("API 키가 설정되지 않아 답변할 수 없습니다.")
     elif df.empty:
         st.error("데이터가 로드되지 않았습니다.")
     else:
