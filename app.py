@@ -116,7 +116,7 @@ if prompt := st.chat_input("질문을 입력하세요..."):
                 except Exception as e:
                     # 2순위: 1.5 Flash (Latest Stable)
                     # st.toast(f"2.0 모델 사용 불가, 1.5로 전환합니다. ({e})") # 디버깅용
-                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+                    model = genai.GenerativeModel("gemini-1.5-flash")
                     response = model.generate_content(system_prompt)
                     answer = response.text
                 
