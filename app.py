@@ -83,8 +83,8 @@ if prompt := st.chat_input("질문을 입력하세요 (예: 양육비 언제 받
                     {prompt}
                     """
                     
-                    # 3. Gemini 모델 호출
-                    model = genai.GenerativeModel("gemini-2.0-flash")
+                    # 3. Gemini 모델 호출 (안정적인 별칭 사용)
+                    model = genai.GenerativeModel("gemini-flash-latest")
                     response = model.generate_content(system_prompt)
                     
                     # 4. 결과 출력
