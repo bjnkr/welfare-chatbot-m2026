@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
+import requests
 
 # 페이지 설정
 st.set_page_config(page_title="복지 챗봇 AI", page_icon="🤖")
@@ -93,16 +94,46 @@ if prompt := st.chat_input("질문을 입력하세요 (예: 양육비 언제 받
                     {prompt}
                     """
                     
+                    
                     # 3. Gemini 모델 호출 (안정적인 별칭 사용)
                     model = genai.GenerativeModel("gemini-flash-latest")
                     response = model.generate_content(system_prompt)
-                    
+
+# 구글 폼 로그 전송 함수
+def log_to_google_form(question, answer, is_answered):
+    # 구글 폼 URL
+    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfKO_6h_Zge_6__lUhAdEFSZ0tsGXe_6BiMNc3_uJqjsYT-Kw/formResponse"
+    
+    # 폼 데이터
+    data = {
+        "entry.878148217": question,   # 질문
+        "entry.1467732690": answer,    # 답변
+        "entry.1569618620": "성공" if is_answered else "실패" # 상태
+    }
+    
+    try:
+        # 1초의 타임아웃을 두어 사용자 경험을 해치지 않게 함 (선택 사항)
+        requests.post(form_url, data=data, timeout=3)
+    except Exception:
+        # 로그 전송 실패가 사용자에게 에러로 보이지 않게 조용히 넘어감
+        pass
+
+# ... (기존 코드 중 답변 생성 부분) ...
                     # 4. 결과 출력
                     answer = response.text
                     st.write(answer)
                     
+                    # 로그 전송 (답변 생성 직후 실행)
+                    # 답변에 부정적인 키워드가 있으면 '실패'로 간주
+                    failure_keywords = ["죄송합니다", "제공된 자료에는 해당 내용이 없습니다", "정보가 없습니다"]
+                    is_success = not any(keyword in answer for keyword in failure_keywords)
+                    
+                    # 백그라운드에서 실행하면 좋지만, 간단하게 동기 실행
+                    log_to_google_form(prompt, answer, is_success)
+
                     # 세션에 저장
                     st.session_state.messages.append({"role": "assistant", "content": answer})
+
                     
                 except Exception as e:
                     st.error(f"AI 응답 생성 중 오류가 발생했습니다: {e}")
