@@ -109,14 +109,14 @@ if prompt := st.chat_input("질문을 입력하세요..."):
                 
                 # 2. 모델 시도 (2.0 Exp -> 실패 시 1.5 Flash -> 실패 시 1.5 Pro)
                 try:
-                    # 1순위: 가장 빠르고 똑똑한 2.0 Flash Exp
+                    # 1순위: 2.0 Flash (Experimental)
                     model = genai.GenerativeModel("gemini-2.0-flash-exp")
                     response = model.generate_content(system_prompt)
                     answer = response.text
                 except Exception as e:
-                    # 2순위: 안정적인 1.5 Flash
+                    # 2순위: 1.5 Flash (Latest Stable)
                     # st.toast(f"2.0 모델 사용 불가, 1.5로 전환합니다. ({e})") # 디버깅용
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
                     response = model.generate_content(system_prompt)
                     answer = response.text
                 
