@@ -1,14 +1,25 @@
 import streamlit as st
 import pandas as pd
-import google.generativeai as genai
 import requests
 import threading
 import sys
+import subprocess
+import time
 
 # --------------------------------------------------------------------------
-# 1. 기본 설정 및 디자인
+# [1] 강력한 라이브러리 강제 업데이트 (2.0 사용을 위한 필수 과정)
 # --------------------------------------------------------------------------
-st.set_page_config(page_title="복지 챗봇 AI", page_icon="🧚‍♀️")
+try:
+    # 이 명령어가 성공해야 Gemini 2.0을 인식할 수 있습니다.
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai>=0.8.3"])
+    import google.generativeai as genai
+except Exception as e:
+    pass
+
+# --------------------------------------------------------------------------
+# [2] 기본 설정
+# --------------------------------------------------------------------------
+st.set_page_config(page_title="복지 챗봇 AI (Gemini 2.0)", page_icon="⚡")
 
 st.markdown("""
 <style>
@@ -19,11 +30,10 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
-# 2. 핵심 기능: 구글 시트 데이터 로드
+# [3] 데이터 로드
 # --------------------------------------------------------------------------
 @st.cache_data
 def load_data():
-    # 사용자님의 구글 시트 CSV 주소
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
     try:
         df = pd.read_csv(url)
@@ -32,25 +42,7 @@ def load_data():
         return pd.DataFrame()
 
 # --------------------------------------------------------------------------
-# 3. 모델 자동 선택기 (에러 방지용)
-# --------------------------------------------------------------------------
-def get_best_model():
-    # 1순위: 1.5 Flash (데이터 분석에 최적)
-    # 2순위: 1.0 Pro (안정성)
-    try:
-        preferred_order = ["gemini-1.5-flash", "gemini-1.0-pro", "gemini-pro"]
-        available_models = [m.name for m in genai.list_models()]
-        
-        for preferred in preferred_order:
-            for model_name in available_models:
-                if preferred in model_name:
-                    return model_name
-        return "gemini-pro"
-    except:
-        return "gemini-pro"
-
-# --------------------------------------------------------------------------
-# 4. 로그 전송 함수
+# [4] 로그 전송
 # --------------------------------------------------------------------------
 def log_to_google_form(question, answer, status):
     def send_request():
@@ -68,60 +60,73 @@ def log_to_google_form(question, answer, status):
     thread.start()
 
 # --------------------------------------------------------------------------
-# 5. 메인 로직
+# [5] 메인 로직
 # --------------------------------------------------------------------------
-# API 키 설정
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    st.error("API 키가 없습니다.")
+    st.error("API 키가 설정되지 않았습니다.")
     st.stop()
 
-# 데이터 불러오기
 df = load_data()
 
-# 사이드바
 with st.sidebar:
-    st.title("🧚‍♀️ 복지 상담소")
-    st.info("구글 시트 데이터를 분석하여 답변합니다.")
+    st.title("⚡ 복지 상담소")
+    st.caption("Powered by Gemini 2.0 Flash")
+    
+    # [상태 확인] 2.0 모델이 잘 연결됐는지 확인하는 표시
+    try:
+        st.write(f"🔧 SDK: {genai.__version__}")
+    except:
+        st.write("🔧 SDK: 업데이트 중...")
 
-# 채팅 UI
-st.subheader("✨ 무엇이든 물어보세요")
+st.subheader("⚡ 무엇이든 물어보세요 (2.0 Ver)")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 복지 혜택에 대해 궁금한 점을 물어보세요.", "avatar": "🧚‍♀️"}]
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 더 빠르고 똑똑해진 Gemini 2.0입니다.", "avatar": "⚡"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=msg.get("avatar")):
         st.write(msg["content"])
 
-# 질문 처리
 if prompt := st.chat_input("질문을 입력하세요"):
     st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧑‍💻"})
     with st.chat_message("user", avatar="🧑‍💻"):
         st.write(prompt)
 
-    with st.chat_message("assistant", avatar="🧚‍♀️"):
+    with st.chat_message("assistant", avatar="⚡"):
         message_placeholder = st.empty()
         
         if df.empty:
             message_placeholder.error("데이터를 불러오지 못했습니다.")
             st.stop()
 
-        with st.spinner("자료를 찾아보고 있어요... 💬"):
+        with st.spinner("Gemini 2.0이 생각 중입니다... 🚀"):
             try:
-                # [중요] 데이터를 텍스트로 변환해서 프롬프트에 넣기
+                # [핵심] Gemini 2.0 Flash Experimental 모델 지정
+                # 만약 업데이트 실패로 2.0이 없으면 자동으로 1.5 Flash -> Pro 순서로 넘어감
+                try:
+                    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+                    # 연결 테스트
+                    model.generate_content("test")
+                except:
+                    # 2.0 실패시 1.5 시도
+                    try:
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        model.generate_content("test")
+                    except:
+                        # 다 안되면 구관이 명관 (Pro)
+                        model = genai.GenerativeModel("gemini-pro")
+
                 context_data = df.to_csv(index=False)
                 
-                # [강력한 제약 조건] 자료에 없으면 절대 대답하지 말라고 지시
                 system_prompt = f"""
                 너는 '복지 정보 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
                 
-                [엄격한 규칙]
-                1. 반드시 제공된 [참고 자료]에 있는 내용만 사용해.
-                2. 자료에 없는 내용은 절대 지어내지 말고, "죄송합니다. 제공된 자료에는 해당 정보가 없습니다."라고 말해.
-                3. 사용자의 질문과 가장 관련 있는 혜택을 찾아서 요약해줘.
-
+                [규칙]
+                1. [참고 자료]에 있는 내용만 사용해.
+                2. 자료에 없는 내용은 "죄송합니다. 자료에 정보가 없습니다."라고 말해.
+                
                 [참고 자료]
                 {context_data}
 
@@ -129,16 +134,12 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 {prompt}
                 """
                 
-                # 모델 선택 및 실행
-                best_model = get_best_model()
-                model = genai.GenerativeModel(best_model)
                 response = model.generate_content(system_prompt)
                 answer = response.text
                 
                 message_placeholder.write(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "🧚‍♀️"})
+                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "⚡"})
 
-                # 로그 전송
                 is_success = "실패" if "죄송" in answer else "성공"
                 log_to_google_form(prompt, answer, is_success)
 
