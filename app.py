@@ -19,7 +19,7 @@ except Exception as e:
 # --------------------------------------------------------------------------
 # 2. 기본 설정
 # --------------------------------------------------------------------------
-st.set_page_config(page_title="복지 챗봇 AI", page_icon="🧚‍♀️")
+st.set_page_config(page_title="복지 챗봇 AI", page_icon="💎")
 
 st.markdown("""
 <style>
@@ -101,28 +101,28 @@ df = load_data()
 model, model_name = get_generative_model()
 
 with st.sidebar:
-    st.title("🧚‍♀️ 복지 상담소")
+    st.image("https://bjn.kr/img_bjn/logo2.png", width=200)
     
     if model:
         st.success(f"✅ 연결됨: {model_name}")
     else:
         st.error("❌ 모든 모델 연결 실패 (API키 확인 필요)")
 
-st.subheader("✨ 무엇이든 물어보세요")
+st.image("https://bjn.kr/img_bjn/logo2.png", width=70)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": f"안녕하세요! ({model_name} 연결 중)", "avatar": "🧚‍♀️"}]
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요. 모의 계산기 관련 문의해 주세요. 일반 복지관련 문의는 복아힘 카페 게시판에 문의 바랍니다.", "avatar": "💎"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=msg.get("avatar")):
         st.write(msg["content"])
 
 if prompt := st.chat_input("질문을 입력하세요"):
-    st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧑‍💻"})
-    with st.chat_message("user", avatar="🧑‍💻"):
+    st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "😎"})
+    with st.chat_message("user", avatar="😎"):
         st.write(prompt)
 
-    with st.chat_message("assistant", avatar="🧚‍♀️"):
+    with st.chat_message("assistant", avatar="💎"):
         message_placeholder = st.empty()
         
         if df.empty:
@@ -138,7 +138,7 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 context_data = df.to_csv(index=False)
                 
                 system_prompt = f"""
-                너는 '복지 정보 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
+                너는 '복지N 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
                 [참고 자료]
                 {context_data}
                 [사용자 질문]
@@ -149,7 +149,7 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 answer = response.text
                 
                 message_placeholder.write(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "🧚‍♀️"})
+                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "💎"})
 
                 is_success = "실패" if "죄송" in answer else "성공"
                 log_to_google_form(prompt, answer, is_success)
