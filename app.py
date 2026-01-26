@@ -4,22 +4,12 @@ import requests
 import threading
 import sys
 import subprocess
-import time
+import google.generativeai as genai
 
 # --------------------------------------------------------------------------
-# [1] 강력한 라이브러리 강제 업데이트 (2.0 사용을 위한 필수 과정)
+# 1. 기본 설정
 # --------------------------------------------------------------------------
-try:
-    # 이 명령어가 성공해야 Gemini 2.0을 인식할 수 있습니다.
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai>=0.8.3"])
-    import google.generativeai as genai
-except Exception as e:
-    pass
-
-# --------------------------------------------------------------------------
-# [2] 기본 설정
-# --------------------------------------------------------------------------
-st.set_page_config(page_title="복지 챗봇 AI (Gemini 2.0)", page_icon="⚡")
+st.set_page_config(page_title="복지 챗봇 AI (Pro)", page_icon="⚡")
 
 st.markdown("""
 <style>
@@ -30,7 +20,7 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
-# [3] 데이터 로드
+# 2. 데이터 로드
 # --------------------------------------------------------------------------
 @st.cache_data
 def load_data():
@@ -42,7 +32,7 @@ def load_data():
         return pd.DataFrame()
 
 # --------------------------------------------------------------------------
-# [4] 로그 전송
+# 3. 로그 전송
 # --------------------------------------------------------------------------
 def log_to_google_form(question, answer, status):
     def send_request():
@@ -60,10 +50,12 @@ def log_to_google_form(question, answer, status):
     thread.start()
 
 # --------------------------------------------------------------------------
-# [5] 메인 로직
+# 4. 메인 로직
 # --------------------------------------------------------------------------
+# API 키 설정 확인
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
 else:
     st.error("API 키가 설정되지 않았습니다.")
     st.stop()
@@ -72,18 +64,17 @@ df = load_data()
 
 with st.sidebar:
     st.title("⚡ 복지 상담소")
-    st.caption("Powered by Gemini 2.0 Flash")
+    st.caption("Premium Model: Gemini 2.0 Flash")
     
-    # [상태 확인] 2.0 모델이 잘 연결됐는지 확인하는 표시
-    try:
-        st.write(f"🔧 SDK: {genai.__version__}")
-    except:
-        st.write("🔧 SDK: 업데이트 중...")
+    # [키 검증] 키가 제대로 들어갔는지 앞 4자리만 살짝 보여줍니다.
+    # (보안상 앞 4자리만 보임. 본인 키랑 맞는지 확인하세요)
+    masked_key = api_key[:4] + "****"
+    st.code(f"Key: {masked_key}")
 
-st.subheader("⚡ 무엇이든 물어보세요 (2.0 Ver)")
+st.subheader("⚡ 무엇이든 물어보세요")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 더 빠르고 똑똑해진 Gemini 2.0입니다.", "avatar": "⚡"}]
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 궁금한 점을 물어보세요.", "avatar": "⚡"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=msg.get("avatar")):
@@ -98,38 +89,21 @@ if prompt := st.chat_input("질문을 입력하세요"):
         message_placeholder = st.empty()
         
         if df.empty:
-            message_placeholder.error("데이터를 불러오지 못했습니다.")
+            message_placeholder.error("데이터 로드 실패")
             st.stop()
 
-        with st.spinner("Gemini 2.0이 생각 중입니다... 🚀"):
+        with st.spinner("분석 중... 🚀"):
             try:
-                # [핵심] Gemini 2.0 Flash Experimental 모델 지정
-                # 만약 업데이트 실패로 2.0이 없으면 자동으로 1.5 Flash -> Pro 순서로 넘어감
-                try:
-                    model = genai.GenerativeModel("gemini-2.0-flash-exp")
-                    # 연결 테스트
-                    model.generate_content("test")
-                except:
-                    # 2.0 실패시 1.5 시도
-                    try:
-                        model = genai.GenerativeModel("gemini-1.5-flash")
-                        model.generate_content("test")
-                    except:
-                        # 다 안되면 구관이 명관 (Pro)
-                        model = genai.GenerativeModel("gemini-pro")
+                # [이미지에서 확인된 모델 사용]
+                # 사용자님 계정(maxx 프로젝트)에 'gemini-2.0-flash'가 확실히 있습니다.
+                model = genai.GenerativeModel("gemini-2.0-flash")
 
                 context_data = df.to_csv(index=False)
                 
                 system_prompt = f"""
                 너는 '복지 정보 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
-                
-                [규칙]
-                1. [참고 자료]에 있는 내용만 사용해.
-                2. 자료에 없는 내용은 "죄송합니다. 자료에 정보가 없습니다."라고 말해.
-                
                 [참고 자료]
                 {context_data}
-
                 [사용자 질문]
                 {prompt}
                 """
@@ -144,4 +118,6 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 log_to_google_form(prompt, answer, is_success)
 
             except Exception as e:
-                st.error(f"오류: {e}")
+                # 에러 메시지를 좀 더 명확하게
+                st.error(f"오류 발생: {e}")
+                st.warning("👉 사이드바에 표시된 API 키 앞자리가 유료 프로젝트 키와 일치하는지 확인해주세요.")
