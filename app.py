@@ -100,13 +100,7 @@ df = load_data()
 # 모델 로드 시도
 model, model_name = get_generative_model()
 
-with st.sidebar:
-    st.image("https://bjn.kr/img_bjn/logo2.png", width=200)
-    
-    if model:
-        st.success(f"✅ 연결됨: {model_name}")
-    else:
-        st.error("❌ 모든 모델 연결 실패 (API키 확인 필요)")
+
 
 st.image("https://bjn.kr/img_bjn/logo2.png", width=70)
 
@@ -139,6 +133,14 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 
                 system_prompt = f"""
                 너는 '복지N 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
+                [유연한 규칙]
+                1. [참고 자료]에 있는 내용으로 답변하는 것이 원칙이지만, 인사(안녕, 반가워 등)나 일상적인 대화에는 자연스럽게 반응해줘.
+                2. 자료에 없는 복지 정보에 대해 물어볼 때만, "죄송합니다. 제공된 자료에는 해당 정보가 없습니다."라고 정중하게 거절해.
+                3. 답변할 때, 참고 자료에 있는 '줄바꿈'이나 '목록 형식'을 그대로 유지해서 보기 좋게 출력해.
+                4. [한국어 처리] "청년은", "대학생이" 처럼 조사가 붙어도, 핵심 단어("청년", "대학생")만으로 내용을 찾아서 답변해.
+                5. 질문이 짧아도(예: "노인"), "노인과 관련된 복지 혜택을 알려달라"는 의미로 이해하고 상세히 답변해.
+
+
                 [참고 자료]
                 {context_data}
                 [사용자 질문]
