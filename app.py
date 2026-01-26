@@ -1,68 +1,14 @@
-# ▼▼▼ [진단 코드] 파일 맨 아래에 붙여넣으세요 ▼▼▼
-st.divider()
-st.error("👇 아래 내용을 캡처해서 보여주세요!")
-
-import google.generativeai as genai
-try:
-    st.write(f"📌 현재 설치된 라이브러리 버전: **{genai.__version__}**")
-    
-    st.write("📌 사용 가능한 모델 목록:")
-    models = list(genai.list_models())
-    if models:
-        for m in models:
-            st.code(m.name)
-    else:
-        st.error("사용 가능한 모델이 하나도 없습니다. (API 키 문제일 수 있음)")
-        
-except Exception as e:
-    st.error(f"진단 실패: {e}")
-
-
-# [app.py 맨 윗줄에 붙여넣으세요]
-import os
-import subprocess
-import sys
-
-# 강제로 라이브러리 최신 버전 설치 (서버가 말을 안 들을 때 쓰는 치트키)
-try:
-    import google.generativeai
-    # 버전이 너무 낮으면 강제 업데이트
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai"])
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
-
-# -----------------------------------------------------------
-
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import requests
 import threading
-import time
+import sys
 
 # --------------------------------------------------------------------------
-# 1. 구글 폼 로그 전송 함수 (비동기 처리)
+# 1. 기본 설정 및 디자인
 # --------------------------------------------------------------------------
-def log_to_google_form(question, answer, status):
-    def send_request():
-        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfKO_6h_Zge_6__lUhAdEFSZ0tsGXe_6BiMNc3_uJqjsYT-Kw/formResponse"
-        data = {
-            "entry.878148217": question,
-            "entry.1467732690": answer,
-            "entry.1569618620": status
-        }
-        try:
-            requests.post(form_url, data=data, timeout=5)
-        except:
-            pass 
-
-    thread = threading.Thread(target=send_request)
-    thread.start()
-
-# --------------------------------------------------------------------------
-# 2. 페이지 설정
-# --------------------------------------------------------------------------
-st.set_page_config(page_title="복지 챗봇 AI", page_icon="🤖")
+st.set_page_config(page_title="복지 챗봇 AI", page_icon="🧚‍♀️")
 
 st.markdown("""
 <style>
@@ -73,15 +19,11 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
-# 3. 모델 설정 및 데이터 로드
+# 2. 핵심 기능: 구글 시트 데이터 로드
 # --------------------------------------------------------------------------
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.error("API 키가 설정되지 않았습니다.")
-
 @st.cache_data
 def load_data():
+    # 사용자님의 구글 시트 CSV 주소
     url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
     try:
         df = pd.read_csv(url)
@@ -89,79 +31,116 @@ def load_data():
     except:
         return pd.DataFrame()
 
+# --------------------------------------------------------------------------
+# 3. 모델 자동 선택기 (에러 방지용)
+# --------------------------------------------------------------------------
+def get_best_model():
+    # 1순위: 1.5 Flash (데이터 분석에 최적)
+    # 2순위: 1.0 Pro (안정성)
+    try:
+        preferred_order = ["gemini-1.5-flash", "gemini-1.0-pro", "gemini-pro"]
+        available_models = [m.name for m in genai.list_models()]
+        
+        for preferred in preferred_order:
+            for model_name in available_models:
+                if preferred in model_name:
+                    return model_name
+        return "gemini-pro"
+    except:
+        return "gemini-pro"
+
+# --------------------------------------------------------------------------
+# 4. 로그 전송 함수
+# --------------------------------------------------------------------------
+def log_to_google_form(question, answer, status):
+    def send_request():
+        form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfKO_6h_Zge_6__lUhAdEFSZ0tsGXe_6BiMNc3_uJqjsYT-Kw/formResponse"
+        data = {
+            "entry.878148217": question,
+            "entry.1467732690": answer,
+            "entry.1569618620": status
+        }
+        try:
+            requests.post(form_url, data=data)
+        except:
+            pass
+    thread = threading.Thread(target=send_request)
+    thread.start()
+
+# --------------------------------------------------------------------------
+# 5. 메인 로직
+# --------------------------------------------------------------------------
+# API 키 설정
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("API 키가 없습니다.")
+    st.stop()
+
+# 데이터 불러오기
 df = load_data()
 
-# --------------------------------------------------------------------------
-# 4. 메인 UI
-# --------------------------------------------------------------------------
+# 사이드바
 with st.sidebar:
-    st.markdown("복지N 챗봇입니다")
+    st.title("🧚‍♀️ 복지 상담소")
+    st.info("구글 시트 데이터를 분석하여 답변합니다.")
 
-st.subheader("✨ 계산기 관련 질문해주세요")
+# 채팅 UI
+st.subheader("✨ 무엇이든 물어보세요")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 복지N 입니다 계산기 관련 문의해 주세요."}]
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 복지 혜택에 대해 궁금한 점을 물어보세요.", "avatar": "🧚‍♀️"}]
 
 for msg in st.session_state.messages:
-    avatar = "🧚" if msg["role"] == "assistant" else "🧑"
-    with st.chat_message(msg["role"], avatar=avatar):
+    with st.chat_message(msg["role"], avatar=msg.get("avatar")):
         st.write(msg["content"])
 
-# --------------------------------------------------------------------------
-# 5. 질문 처리 (모델 Fallback 로직 적용)
-# --------------------------------------------------------------------------
-if prompt := st.chat_input("질문을 입력하세요..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="🧑"):
+# 질문 처리
+if prompt := st.chat_input("질문을 입력하세요"):
+    st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧑‍💻"})
+    with st.chat_message("user", avatar="🧑‍💻"):
         st.write(prompt)
 
-    with st.chat_message("assistant", avatar="🧚"):
+    with st.chat_message("assistant", avatar="🧚‍♀️"):
         message_placeholder = st.empty()
         
         if df.empty:
-            message_placeholder.error("데이터를 불러올 수 없습니다.")
+            message_placeholder.error("데이터를 불러오지 못했습니다.")
             st.stop()
 
-        with st.spinner("관련 정보를 열심히 찾고 있어요... 💬"):
+        with st.spinner("자료를 찾아보고 있어요... 💬"):
             try:
-                # 1. 전체 데이터 컨텍스트 (Flash 모델은 대용량 처리에 강함)
-                full_data = df.to_csv(index=False)
+                # [중요] 데이터를 텍스트로 변환해서 프롬프트에 넣기
+                context_data = df.to_csv(index=False)
                 
+                # [강력한 제약 조건] 자료에 없으면 절대 대답하지 말라고 지시
                 system_prompt = f"""
-                너는 유능한 사회복지 상담사야. 아래 [참고 자료]를 바탕으로 답변해줘.
+                너는 '복지 정보 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
+                
+                [엄격한 규칙]
+                1. 반드시 제공된 [참고 자료]에 있는 내용만 사용해.
+                2. 자료에 없는 내용은 절대 지어내지 말고, "죄송합니다. 제공된 자료에는 해당 정보가 없습니다."라고 말해.
+                3. 사용자의 질문과 가장 관련 있는 혜택을 찾아서 요약해줘.
 
                 [참고 자료]
-                {full_data}
+                {context_data}
 
-                [규칙]
-                1. 반드시 제공된 자료에 있는 내용으로만 답변해.
-                2. 자료에 없으면 "죄송합니다. 방금하신 질문은 게시판에 문의 바랍니다."라고 답해.
-                3. 핵심만 간결하고 친절하게 답변해.
-
-                [질문]
+                [사용자 질문]
                 {prompt}
                 """
                 
-                # 2. 모델 시도 (2.0 Exp -> 실패 시 1.5 Flash -> 실패 시 1.5 Pro)
-                try:
-                    # 1순위: 2.0 Flash (Experimental)
-                    model = genai.GenerativeModel("gemini-2.0-flash-exp")
-                    response = model.generate_content(system_prompt)
-                    answer = response.text
-                except Exception as e:
-                    # 2순위: 1.5 Flash (Latest Stable)
-                    # st.toast(f"2.0 모델 사용 불가, 1.5로 전환합니다. ({e})") # 디버깅용
-                    model = genai.GenerativeModel("gemini-pro")
-                    response = model.generate_content(system_prompt)
-                    answer = response.text
+                # 모델 선택 및 실행
+                best_model = get_best_model()
+                model = genai.GenerativeModel(best_model)
+                response = model.generate_content(system_prompt)
+                answer = response.text
                 
                 message_placeholder.write(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "🧚‍♀️"})
 
-                # 답변 저장 & 로그
-                st.session_state.messages.append({"role": "assistant", "content": answer})
-                status = "실패" if "죄송합니다" in answer else "성공"
-                log_to_google_form(prompt, answer, status)
+                # 로그 전송
+                is_success = "실패" if "죄송" in answer else "성공"
+                log_to_google_form(prompt, answer, is_success)
 
             except Exception as e:
-                message_placeholder.error(f"오류가 발생했습니다: {e}")
-                log_to_google_form(prompt, f"System Error: {e}", "에러")
+                st.error(f"오류: {e}")
