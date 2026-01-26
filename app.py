@@ -4,12 +4,22 @@ import requests
 import threading
 import sys
 import subprocess
-import google.generativeai as genai
+import time
 
 # --------------------------------------------------------------------------
-# 1. 기본 설정
+# 1. [필수] 라이브러리 강제 업데이트 (서버야 정신차려!)
 # --------------------------------------------------------------------------
-st.set_page_config(page_title="복지 챗봇 AI (Pro)", page_icon="⚡")
+# 이 코드가 있어야 최신 모델(1.5, 2.0) 이름을 인식할 수 있습니다.
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai"])
+    import google.generativeai as genai
+except Exception as e:
+    pass
+
+# --------------------------------------------------------------------------
+# 2. 기본 설정
+# --------------------------------------------------------------------------
+st.set_page_config(page_title="복지 챗봇 AI", page_icon="🧚‍♀️")
 
 st.markdown("""
 <style>
@@ -20,7 +30,7 @@ footer {visibility: hidden;}
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
-# 2. 데이터 로드
+# 3. 데이터 로드
 # --------------------------------------------------------------------------
 @st.cache_data
 def load_data():
@@ -32,7 +42,7 @@ def load_data():
         return pd.DataFrame()
 
 # --------------------------------------------------------------------------
-# 3. 로그 전송
+# 4. 로그 전송
 # --------------------------------------------------------------------------
 def log_to_google_form(question, answer, status):
     def send_request():
@@ -50,31 +60,58 @@ def log_to_google_form(question, answer, status):
     thread.start()
 
 # --------------------------------------------------------------------------
-# 4. 메인 로직
+# 5. [핵심] 모델 자동 선택 (2.0 -> 1.5 -> Pro)
 # --------------------------------------------------------------------------
-# API 키 설정 확인
+def get_generative_model():
+    # 1순위: 사용자님이 원하시는 2.0 (무료 실험 버전)
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model.generate_content("test") # 테스트 발사
+        return model, "Gemini 2.0 Flash (Exp)"
+    except:
+        pass
+
+    # 2순위: 1.5 Flash (가성비 최고)
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        model.generate_content("test")
+        return model, "Gemini 1.5 Flash"
+    except:
+        pass
+
+    # 3순위: 최후의 보루 (이건 구버전 라이브러리에서도 100% 됨)
+    try:
+        model = genai.GenerativeModel("gemini-pro")
+        return model, "Gemini Pro (Legacy)"
+    except:
+        return None, "Error"
+
+# --------------------------------------------------------------------------
+# 6. 메인 로직
+# --------------------------------------------------------------------------
 if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     st.error("API 키가 설정되지 않았습니다.")
     st.stop()
 
 df = load_data()
 
-with st.sidebar:
-    st.title("⚡ 복지 상담소")
-    st.caption("Premium Model: Gemini 2.0 Flash")
-    
-    # [키 검증] 키가 제대로 들어갔는지 앞 4자리만 살짝 보여줍니다.
-    # (보안상 앞 4자리만 보임. 본인 키랑 맞는지 확인하세요)
-    masked_key = api_key[:4] + "****"
-    st.code(f"Key: {masked_key}")
+# 모델 로드 시도
+model, model_name = get_generative_model()
 
-st.subheader("⚡ 무엇이든 물어보세요")
+with st.sidebar:
+    st.title("🧚‍♀️ 복지 상담소")
+    
+    if model:
+        st.success(f"✅ 연결됨: {model_name}")
+    else:
+        st.error("❌ 모든 모델 연결 실패 (API키 확인 필요)")
+
+st.subheader("✨ 무엇이든 물어보세요")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요! 궁금한 점을 물어보세요.", "avatar": "⚡"}]
+    st.session_state.messages = [{"role": "assistant", "content": f"안녕하세요! ({model_name} 연결 중)", "avatar": "🧚‍♀️"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=msg.get("avatar")):
@@ -85,19 +122,19 @@ if prompt := st.chat_input("질문을 입력하세요"):
     with st.chat_message("user", avatar="🧑‍💻"):
         st.write(prompt)
 
-    with st.chat_message("assistant", avatar="⚡"):
+    with st.chat_message("assistant", avatar="🧚‍♀️"):
         message_placeholder = st.empty()
         
         if df.empty:
             message_placeholder.error("데이터 로드 실패")
             st.stop()
+        
+        if not model:
+            message_placeholder.error("AI 모델을 불러오지 못했습니다.")
+            st.stop()
 
-        with st.spinner("분석 중... 🚀"):
+        with st.spinner(f"{model_name}가 답변 중입니다... 💬"):
             try:
-                # [이미지에서 확인된 모델 사용]
-                # 사용자님 계정(maxx 프로젝트)에 'gemini-2.0-flash'가 확실히 있습니다.
-                model = genai.GenerativeModel("gemini-2.0-flash")
-
                 context_data = df.to_csv(index=False)
                 
                 system_prompt = f"""
@@ -112,12 +149,13 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 answer = response.text
                 
                 message_placeholder.write(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "⚡"})
+                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "🧚‍♀️"})
 
                 is_success = "실패" if "죄송" in answer else "성공"
                 log_to_google_form(prompt, answer, is_success)
 
             except Exception as e:
-                # 에러 메시지를 좀 더 명확하게
-                st.error(f"오류 발생: {e}")
-                st.warning("👉 사이드바에 표시된 API 키 앞자리가 유료 프로젝트 키와 일치하는지 확인해주세요.")
+                if "429" in str(e):
+                    st.warning("이용량이 많아 잠시 지연되었습니다. 10초 뒤 다시 시도해주세요.")
+                else:
+                    st.error(f"오류: {e}")
