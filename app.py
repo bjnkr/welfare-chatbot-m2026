@@ -1,3 +1,23 @@
+# ▼▼▼ [진단 코드] 파일 맨 아래에 붙여넣으세요 ▼▼▼
+st.divider()
+st.error("👇 아래 내용을 캡처해서 보여주세요!")
+
+import google.generativeai as genai
+try:
+    st.write(f"📌 현재 설치된 라이브러리 버전: **{genai.__version__}**")
+    
+    st.write("📌 사용 가능한 모델 목록:")
+    models = list(genai.list_models())
+    if models:
+        for m in models:
+            st.code(m.name)
+    else:
+        st.error("사용 가능한 모델이 하나도 없습니다. (API 키 문제일 수 있음)")
+        
+except Exception as e:
+    st.error(f"진단 실패: {e}")
+
+
 # [app.py 맨 윗줄에 붙여넣으세요]
 import os
 import subprocess
