@@ -1,3 +1,18 @@
+# [app.py 맨 윗줄에 붙여넣으세요]
+import os
+import subprocess
+import sys
+
+# 강제로 라이브러리 최신 버전 설치 (서버가 말을 안 들을 때 쓰는 치트키)
+try:
+    import google.generativeai
+    # 버전이 너무 낮으면 강제 업데이트
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "google-generativeai"])
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
+
+# -----------------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
