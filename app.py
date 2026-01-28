@@ -111,7 +111,8 @@ else:
     st.error("API 키가 설정되지 않았습니다.")
     st.stop()
 
-df = load_data()
+df, few_shot_examples = load_data_v2()
+
 
 # 모델 로드 시도
 model, model_name = get_generative_model()
