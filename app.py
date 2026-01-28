@@ -113,7 +113,6 @@ else:
 
 df, few_shot_examples = load_data_v2()
 
-
 # 모델 로드 시도
 model, model_name = get_generative_model()
 
