@@ -32,24 +32,19 @@ footer {visibility: hidden;}
 # --------------------------------------------------------------------------
 # 3. 데이터 로드
 # --------------------------------------------------------------------------
-# 1. 기존 지식 데이터 (사용자님의 원래 데이터 시트 링크)
 knowledge_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
-
-# 2. 새로운 학습 예시 데이터 (방금 만든 예시 시트 링크)
 example_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyjxNdN93yLxvN_FtOHJb28_V_olidRIJsRUbja75zBwN4TUE1gLThDt79EiVJp9PhE7kJ4qJASymi/pub?output=csv"
 
 @st.cache_data
-def load_data():
-    # 지식 데이터 로드
+def load_data_v2():  # <--- 이름 변경 (v2)
+    # 1. 지식 데이터 로드
     df_knowledge = pd.read_csv(knowledge_url)
     
-    # 학습 예시 데이터 로드 (만약 에러나면 빈 칸으로 처리)
+    # 2. 학습 예시 데이터 로드
     try:
         df_examples = pd.read_csv(example_url)
-        # 예시들을 하나의 텍스트 덩어리로 만듦
         example_text = ""
         for _, row in df_examples.iterrows():
-             # 질문과 답이 있는 경우에만 추가
             if pd.notna(row[0]) and pd.notna(row[1]):
                 example_text += f"사용자: {row[0]}\nAI: {row[1]}\n\n"
     except:
@@ -57,9 +52,13 @@ def load_data():
         
     return df_knowledge, example_text
 
-# 데이터 불러오기 실행
-df, few_shot_examples = load_data()
+# 3. 데이터 불러오기 실행 (여기도 v2로 변경!)
+df, few_shot_examples = load_data_v2()
 
+# 4. 에러 체크
+if df.empty:
+    st.error("데이터를 불러오지 못했습니다.")
+    
 # --------------------------------------------------------------------------
 # 4. 로그 전송
 # --------------------------------------------------------------------------
