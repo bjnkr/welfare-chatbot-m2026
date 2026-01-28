@@ -32,14 +32,33 @@ footer {visibility: hidden;}
 # --------------------------------------------------------------------------
 # 3. 데이터 로드
 # --------------------------------------------------------------------------
+# 1. 기존 지식 데이터 (사용자님의 원래 데이터 시트 링크)
+knowledge_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
+
+# 2. 새로운 학습 예시 데이터 (방금 만든 예시 시트 링크)
+example_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSyjxNdN93yLxvN_FtOHJb28_V_olidRIJsRUbja75zBwN4TUE1gLThDt79EiVJp9PhE7kJ4qJASymi/pub?output=csv"
+
 @st.cache_data
 def load_data():
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT3EmDQ002d2Y8dQkgHE4A_wSErUfgK9xU0QJ8pz0yu_W0F7Q9VN1Es-_OKKJjBobIpZr8tBP3aJQ3-/pub?output=csv"
+    # 지식 데이터 로드
+    df_knowledge = pd.read_csv(knowledge_url)
+    
+    # 학습 예시 데이터 로드 (만약 에러나면 빈 칸으로 처리)
     try:
-        df = pd.read_csv(url)
-        return df
+        df_examples = pd.read_csv(example_url)
+        # 예시들을 하나의 텍스트 덩어리로 만듦
+        example_text = ""
+        for _, row in df_examples.iterrows():
+             # 질문과 답이 있는 경우에만 추가
+            if pd.notna(row[0]) and pd.notna(row[1]):
+                example_text += f"사용자: {row[0]}\nAI: {row[1]}\n\n"
     except:
-        return pd.DataFrame()
+        example_text = "예시 데이터를 불러오는 데 실패했습니다."
+        
+    return df_knowledge, example_text
+
+# 데이터 불러오기 실행
+df, few_shot_examples = load_data()
 
 # --------------------------------------------------------------------------
 # 4. 로그 전송
@@ -63,28 +82,26 @@ def log_to_google_form(question, answer, status):
 # 5. [핵심] 모델 자동 선택 (2.0 -> 1.5 -> Pro)
 # --------------------------------------------------------------------------
 def get_generative_model():
-    # 1순위: 사용자님이 원하시는 2.0 (무료 실험 버전)
-    try:
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
-        model.generate_content("test") # 테스트 발사
-        return model, "Gemini 2.0 Flash (Exp)"
-    except:
-        pass
+    # 모델 후보군 (우선순위 순서대로)
+    # 2.0 Flash -> 1.5 Flash -> Latest Flash -> Pro (Legacy)
+    candidates = [
+        ("gemini-2.0-flash", "Gemini 2.0 Flash"),
+        ("gemini-2.0-flash-exp", "Gemini 2.0 Flash (Exp)"),
+        ("gemini-1.5-flash", "Gemini 1.5 Flash"),
+        ("gemini-flash-latest", "Gemini Flash (Latest)"), 
+        ("gemini-pro", "Gemini Pro (Legacy)")
+    ]
 
-    # 2순위: 1.5 Flash (가성비 최고)
-    try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        model.generate_content("test")
-        return model, "Gemini 1.5 Flash"
-    except:
-        pass
-
-    # 3순위: 최후의 보루 (이건 구버전 라이브러리에서도 100% 됨)
-    try:
-        model = genai.GenerativeModel("gemini-pro")
-        return model, "Gemini Pro (Legacy)"
-    except:
-        return None, "Error"
+    for model_id, name in candidates:
+        try:
+            model = genai.GenerativeModel(model_id)
+            # 가벼운 테스트 요청으로 실제 작동 여부 확인
+            model.generate_content("test")
+            return model, name
+        except Exception:
+            continue
+            
+    return None, "Error"
 
 # --------------------------------------------------------------------------
 # 6. 메인 로직
@@ -105,7 +122,7 @@ model, model_name = get_generative_model()
 st.image("https://bjn.kr/img_bjn/logo2.png", width=70)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요. 모의 계산기 관련 문의해 주세요. 일반 복지관련 문의는 복아힘 카페 게시판에 문의 바랍니다.", "avatar": "💎"}]
+    st.session_state.messages = [{"role": "assistant", "content": "안녕하세요. 무엇을 도와드릴까요?", "avatar": "💎"}]
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=msg.get("avatar")):
@@ -132,23 +149,30 @@ if prompt := st.chat_input("질문을 입력하세요"):
                 context_data = df.to_csv(index=False)
                 
                 system_prompt = f"""
-                너는 '복지N 상담사'야. 아래 [참고 자료]를 바탕으로만 답변해.
-                [엄격한 규칙]
-                1. 참고 자료에 있는 내용만 사용해.
-                2. [나이 확인 필수] 청년/일반 기준 구분해서 적용해
-                3. [포맷 규칙] 답변할 때 절대 '코드 블록(```)'이나 '회색 박스'를 사용하지 마. 
-                4. 긴 문장은 자동으로 줄바꿈이 되도록 일반 텍스트나 글머리 기호(bullet point)만 사용해서 작성해.
+                너는 '대한민국 최고의 복지 상담사'야. 
+                사용자는 복지 제도가 어렵고 복잡해서 너에게 도움을 요청했어.
+                제공된 [참고 자료]를 바탕으로, 친구나 가족에게 설명하듯 쉽고 친절하게 답변해줘.
 
+                [엄격한 답변 규칙]
+                1. **앵무새 금지:** 참고 자료의 문장을 그대로 복사해서 붙여넣지 마. 내용을 이해한 뒤 너만의 말투로 요약해서 설명해.
+                2. **구조화된 답변:** 줄글로 길게 늘어놓지 말고, 가독성 있게 답변해.
+                3. **친절한 말투:** "~입니다/합니다" 대신 "~에요/해요" 체를 사용하고, 공감하는 태도를 보여줘.
+                4. **출처 준수:** 반드시 [참고 자료]에 있는 내용만 사실로 간주해. 자료에 없는 내용은 "죄송하지만 해당 내용은 자료에 없어 정확한 답변이 어렵습니다."라고 솔직하게 말해.
+                5. **이미지 출력:** [참고 자료]에 이미지 링크(http...)가 있다면 답변 끝에 `![설명](주소)` 형식으로 보여줘.
+                
+                [답변 예시]
+                사용자: "생계급여 조건이 뭐야?"
+                나쁜 답변: "생계급여 선정기준은 소득인정액이 중위소득 32% 이하인 가구입니다." (X)
+                좋은 답변: "생계급여를 받으시려면 소득인정액이 기준 중위소득의 32%보다 적어야 해요! 
+                쉽게 말해, 가구원 수에 따른 기준 금액보다 소득인정액이 적으시면 신청 가능합니다.
+                
+                * **1인 가구:** 82만 원 이하
+                * **4인 가구:** 207만 원 이하
+                
+                모의 계산기를 이용해 보세요! 😊" (O)
 
-                [유연한 규칙]
-                1. [참고 자료]에 있는 내용으로 답변하는 것이 원칙이지만, 인사(안녕, 반가워 등)나 일상적인 대화에는 자연스럽게 반응해줘.
-                2. 자료에 없는 복지 정보에 대해 물어볼 때만, "죄송합니다. 제공된 자료에는 해당 정보가 없습니다."라고 정중하게 거절해.
-                3. 답변할 때, 참고 자료에 있는 '줄바꿈'이나 '목록 형식'을 그대로 유지해서 보기 좋게 출력해.
-                4. [한국어 처리] "청년은", "대학생이" 처럼 조사가 붙어도, 핵심 단어("청년", "대학생")만으로 내용을 찾아서 답변해.
-                5. 질문이 짧아도(예: "노인"), "노인과 관련된 복지 혜택을 알려달라"는 의미로 이해하고 상세히 답변해.
-                6. [계산 규칙] 사용자가 소득이나 재산 정보를 주면, 참고 자료에 있는 '기준 금액'이나 '공제 방식'을 적용해서 직접 계산해줘. 
-                7. 계산할 때는 "100만원 - 30% = 70만원이므로 기준보다 적습니다"와 같이 풀이 과정을 보여줘.
-
+                [답변 예시 (스타일 가이드)]
+                {few_shot_examples}
 
                 [참고 자료]
                 {context_data}
