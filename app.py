@@ -132,70 +132,50 @@ if prompt := st.chat_input("질문을 입력하세요"):
     with st.chat_message("user", avatar="😎"):
         st.write(prompt)
 
-    with st.chat_message("assistant", avatar="💎"):
-        message_placeholder = st.empty()
-        
-        if df.empty:
-            message_placeholder.error("데이터 로드 실패")
-            st.stop()
-        
-        if not model:
-            message_placeholder.error("AI 모델을 불러오지 못했습니다.")
-            st.stop()
+    # Context data (Assistant added to ensure availability)
+    context_data = df.to_csv(index=False)
 
-        with st.spinner(f"{model_name}가 답변 중입니다... 💬"):
-            try:
-                context_data = df.to_csv(index=False)
-                
-                system_prompt = f"""
-                너는 '대한민국 최고의 복지 상담사'야. 
-                사용자는 복지 제도가 어렵고 복잡해서 너에게 도움을 요청했어.
-                제공된 [참고 자료]를 바탕으로, 친구나 가족에게 설명하듯 쉽고 친절하게 답변해줘.
+    # 1. [기억 로직] 이전 대화 내용 정리 (방금 질문은 제외)
+    conversation_history = ""
+    for msg in st.session_state.messages[:-1]:
+        role = "사용자" if msg['role'] == "user" else "AI"
+        conversation_history += f"{role}: {msg['content']}\n"
 
-                [엄격한 답변 규칙]
-                1. **앵무새 금지:** 참고 자료의 문장을 그대로 복사해서 붙여넣지 마. 내용을 이해한 뒤 너만의 말투로 요약해서 설명해.
-                2. **구조화된 답변:** 줄글로 길게 늘어놓지 말고, 가독성 있게 답변해.
-                3. **친절한 말투:** "~입니다/합니다" 대신 "~에요/해요" 체를 사용하고, 공감하는 태도를 보여줘.
-                4. **출처 준수:** 반드시 [참고 자료]에 있는 내용만 사실로 간주해. 자료에 없는 내용은 "죄송하지만 해당 내용은 자료에 없어 정확한 답변이 어렵습니다."라고 솔직하게 말해.
-                5. **시각화 및 링크 연결 (Visual & Link):**
-                   - [참고 자료]에 URL이 포함되어 있다면 답변 맨 끝에 줄바꿈 후 제공하십시오.
-                   - **이미지 파일(.jpg, .png 등):** `![이미지 설명](URL)` 형식으로 바로 보여주십시오.
-                   - **일반 링크(웹사이트, 문서):** `🔗 [제목(클릭하여 이동)](URL)` 형식으로 작성하여 새 창에서 열리도록 유도하십시오.
-                6. **즉시 계산 (Calculator Mode):**
-                   - 사용자가 구체적인 숫자(예: 소득 300만 원, 보증금 5천만 원)를 말하면, 단순히 공식을 설명하지 말고 **직접 계산해서 '최종 금액'을 딱 집어 말해.**
-                   - (예: "300만 원을 버시니까 공제 후 소득인정액은 **182만 원**입니다!")
+    # 2. [안티그라비티 프롬프트 조립]
+    system_prompt = f"""
+    당신은 복지 정보의 복잡한 중력을 거스르는 AI 어시스턴트, **'안티그라비티(Anti-Gravity)'**입니다.
+    당신의 미션은 삶의 무게와 행정 절차의 복잡함에 지친 사용자에게 **'가벼움(Easy)'**과 **'상승(Up)'**의 경험을 제공하는 것입니다.
 
-                [답변 예시]
-                사용자: "생계급여 조건이 뭐야?"
-                나쁜 답변: "생계급여 선정기준은 소득인정액이 중위소득 32% 이하인 가구입니다." (X)
-                좋은 답변: "생계급여를 받으시려면 소득인정액이 기준 중위소득의 32%보다 적어야 해요! 
-                쉽게 말해, 가구원 수에 따른 기준 금액보다 소득인정액이 적으시면 신청 가능합니다.
-                
-                * **1인 가구:** 82만 원 이하
-                * **4인 가구:** 207만 원 이하
-                
-                모의 계산기를 이용해 보세요! 😊" (O)
+    [안티그라비티 행동 강령]
+    1. **무중력 요약 (Zero-Gravity Summary):** 핵심만 둥둥 띄워 보여주듯 명료하게 요약하십시오.
+    2. **부담 없는 톤 (Uplifting Tone):** 스마트하고 세련되며 긍정적인 에너지를 전달하십시오.
+    3. **확실한 착륙 (Safe Landing):** 모르는 내용은 솔직히 말하고 대안을 제시하십시오.
+    4. **즉시 계산 (Calculator Mode):** 사용자가 숫자(소득, 재산 등)를 말하면 공식을 설명하기보다 **직접 계산해서 결과값**을 알려주십시오.
+    5. **시각화 및 링크 연결:** - 이미지: `![설명](URL)` 
+       - 링크: `� [제목(클릭)](URL)`
 
-                [답변 예시 (스타일 가이드)]
-                {few_shot_examples}
+    [답변 스타일 예시]
+    {few_shot_examples}
 
-                [참고 자료]
-                {context_data}
-                [사용자 질문]
-                {prompt}
-                """
-                
-                response = model.generate_content(system_prompt)
-                answer = response.text
-                
-                message_placeholder.write(answer)
-                st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "💎"})
+    [이전 대화 내역]
+    {conversation_history}
 
-                is_success = "실패" if "죄송" in answer else "성공"
-                log_to_google_form(prompt, answer, is_success)
+    [참고 자료]
+    {context_data}
 
-            except Exception as e:
-                if "429" in str(e):
-                    st.warning("이용량이 많아 잠시 지연되었습니다. 10초 뒤 다시 시도해주세요.")
-                else:
-                    st.error(f"오류: {e}")
+    [사용자 질문]
+    {prompt}
+    """
+
+    # 3. [답변 생성 및 출력]
+    with st.chat_message("assistant"):
+        with st.spinner("안티그라비티가 분석 중입니다... 🚀"):
+            # AI에게 질문 던지기
+            response = model.generate_content(system_prompt)
+            answer = response.text
+            
+            # 화면에 출력
+            st.write(answer)
+            
+            # 대화 내역에 저장
+            st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "💎"})
