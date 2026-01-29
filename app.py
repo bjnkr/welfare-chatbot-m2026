@@ -141,9 +141,9 @@ if prompt := st.chat_input("질문을 입력하세요"):
         role = "사용자" if msg['role'] == "user" else "AI"
         conversation_history += f"{role}: {msg['content']}\n"
 
-    # 2. [안티그라비티 프롬프트 조립]
+    # 2. [프롬프트 조립]
     system_prompt = f"""
-    당신은 복지 정보의 복잡한 중력을 거스르는 AI 어시스턴트, **'안티그라비티(Anti-Gravity)'**입니다.
+    당신은 복지 정보의 복잡한 중력을 거스르는 AI 어시스턴트, **'복지N'**입니다.
     당신의 미션은 삶의 무게와 행정 절차의 복잡함에 지친 사용자에게 **'가벼움(Easy)'**과 **'상승(Up)'**의 경험을 제공하는 것입니다.
 
     [안티그라비티 행동 강령]
@@ -169,7 +169,7 @@ if prompt := st.chat_input("질문을 입력하세요"):
 
     # 3. [답변 생성 및 출력]
     with st.chat_message("assistant"):
-        with st.spinner("안티그라비티가 분석 중입니다... 🚀"):
+        with st.spinner("분석 중입니다... 🚀"):
             # AI에게 질문 던지기
             response = model.generate_content(system_prompt)
             answer = response.text
