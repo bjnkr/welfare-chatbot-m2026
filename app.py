@@ -104,6 +104,33 @@ def get_generative_model():
     return None, "Error"
 
 # --------------------------------------------------------------------------
+# 5-1. [검증] 거짓말 탐지 필터 (Hallucination Filter)
+# --------------------------------------------------------------------------
+def filter_hallucinations(text, context):
+    """
+    AI가 생성한 텍스트(text) 안에 있는 링크가
+    실제 참고자료(context)에 없는 가짜라면, 
+    링크만 쏙 빼고 텍스트만 남깁니다.
+    """
+    # 1. 이미지 링크 찾기 (![설명](주소))
+    img_pattern = r'!\[.*?\]\((.*?)\)'
+    
+    # 2. 일반 링크 찾기 ([설명](주소))
+    link_pattern = r'\[.*?\]\((.*?)\)'
+    
+    # 3. 모든 링크(URL) 추출
+    found_urls = re.findall(img_pattern, text) + re.findall(link_pattern, text)
+    
+    for url in found_urls:
+        # 4. 만약 URL이 참고자료(context_data)에 없다면?
+        if url not in context:
+            # 해당 URL이 포함된 마크다운 태그를 통째로 삭제
+            # 예: ![이상한사진](http://fake.com) -> "" (빈칸)
+            text = text.replace(f"({url})", "") # 주소 부분만 지움 (설명 텍스트는 남김)
+            
+    return text
+
+# --------------------------------------------------------------------------
 # 6. 메인 로직
 # --------------------------------------------------------------------------
 if "GEMINI_API_KEY" in st.secrets:
@@ -235,37 +262,10 @@ if prompt := st.chat_input("질문을 입력하세요"):
             response = model.generate_content(system_prompt)
             answer = response.text
             
-            # ▼▼▼ [거짓말 탐지기 코드 추가] ▼▼▼
-def filter_hallucinations(text, context):
-    """
-    AI가 생성한 텍스트(text) 안에 있는 링크가
-    실제 참고자료(context)에 없는 가짜라면, 
-    링크만 쏙 빼고 텍스트만 남깁니다.
-    """
-    # 1. 이미지 링크 찾기 (![설명](주소))
-    img_pattern = r'!\[.*?\]\((.*?)\)'
-    
-    # 2. 일반 링크 찾기 ([설명](주소))
-    link_pattern = r'\[.*?\]\((.*?)\)'
-    
-    # 3. 모든 링크(URL) 추출
-    found_urls = re.findall(img_pattern, text) + re.findall(link_pattern, text)
-    
-    for url in found_urls:
-        # 4. 만약 URL이 참고자료(context_data)에 없다면?
-        if url not in context:
-            # 해당 URL이 포함된 마크다운 태그를 통째로 삭제
-            # 예: ![이상한사진](http://fake.com) -> "" (빈카)
-            text = text.replace(f"({url})", "") # 주소 부분만 지움 (설명 텍스트는 남김)
-            # 혹은 태그 전체를 지우고 싶다면 정규식으로 복잡하게 처리해야 하므로,
-            # 일단은 링크 기능만 무력화시키는 위 방식 추천
-            
-    return text
-
-# 답변을 화면에 뿌리기 전에 필터링!
-# (주의: context_data 변수가 위에서 정의되어 있어야 합니다)
-answer = filter_hallucinations(answer, context_data)
-# ▲▲▲ [여기까지 추가] ▲▲▲         
+            # ▼▼▼ [거짓말 탐지기 적용] ▼▼▼
+            # 답변을 화면에 뿌리기 전에 필터링!
+            answer = filter_hallucinations(answer, context_data)
+            # ▲▲▲ [적용 완료] ▲▲▲         
 
             
             # 화면에 출력
