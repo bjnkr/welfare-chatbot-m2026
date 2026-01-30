@@ -329,3 +329,6 @@ if prompt := st.chat_input("질문을 입력하세요"):
             
             # 대화 내역에 저장
             st.session_state.messages.append({"role": "assistant", "content": answer, "avatar": "💎"})
+            
+            # Google Form에 로그 전송
+            log_to_google_form(prompt, answer, "success")
